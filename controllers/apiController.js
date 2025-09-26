@@ -89,7 +89,9 @@ const message = async (req, res) => {
     res.status(200).json({ reply: completion.choices[0].message.content });
   } catch (err) {
     console.error("AI error:", err);
-    res.status(500).json({ error: "Something went wrong. Truy again later!" });
+    return res
+      .status(500)
+      .json({ errorMessage: "Something went wrong. Try again later!" });
   }
 };
 

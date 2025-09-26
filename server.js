@@ -1,10 +1,14 @@
 const express = require("express");
-// const mongoose = require("mongoose"); //v2
+const mongoose = require("mongoose"); //v2
 const cors = require("cors");
 
 const dotenv = require("dotenv");
 const indexRoutes = require("./routes/index");
-const apiRoutes = require("./routes/apiRouter"); //v2
+const apiRoutes = require("./routes/apiRoutes"); //v2
+const waitlistRoutes = require("./routes/waitlistRoutes"); //v2
+const connectDB = require("./config/db");
+
+connectDB();
 
 dotenv.config();
 
@@ -19,8 +23,18 @@ app.use(express.json({ limit: "10mb" }));
 // Routes
 app.use("/api/v1/", indexRoutes);
 app.use("/api/v1/ai/", apiRoutes);
+app.use("/api/v1/web/", waitlistRoutes);
 
+const start = async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, () => {
+      console.log(`Server running on ${PORT}`);
+    });
+  } catch (error) {
+    console.log("Server error", error.message);
+  }
+};
+
+start();
 // Start server
-app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
-});
