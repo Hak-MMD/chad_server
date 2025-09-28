@@ -13,11 +13,31 @@ connectDB();
 dotenv.config();
 
 const app = express();
-const PORT =
-  process.env.NODE_ENV === "production" ? 8080 : process.env.PORT || 3001;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+  "https://chad-ai-nd2k.onrender.com", // your deployed React site
+  "chrome-extension://kolefjoacfickglplddbbbahmmjlokop", // your Chrome extension
+  "http://localhost:3000", // keep for local React dev
+  "http://localhost:3001", // keep for local server testing
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // allow requests with no origin (like mobile apps, curl, Postman)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        return callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true, // allow cookies/authorization headers if needed
+  })
+);
+
 app.use(express.json({ limit: "10mb" }));
 
 // Routes
