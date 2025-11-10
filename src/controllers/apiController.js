@@ -1,45 +1,45 @@
 const openai = require("../config/openai.js");
 
-// const message = async (req, res) => {
-//   const { text, screenshot } = req.body;
-//   try {
-//     console.log("Received text:", text);
-//     await new Promise((resolve) => setTimeout(resolve, 3000)); // Simulate processing delay
-//     // console.log("Received screenshots:", screenshot);
-//     res.json({
-//       reply: `Hello from the API controller! ${
-//         screenshot ? "Screenshot received." : "No screenshot."
-//       }`,
-//     });
-//   } catch (error) {
-//     console.log("Error in message controller:", error);
-//   }
-// };
+const messageNorm = async (req, res) => {
+  const { text, screenshot } = req.body;
+  try {
+    console.log("Received text:", text);
+    await new Promise((resolve) => setTimeout(resolve, 3000)); // Simulate processing delay
+    // console.log("Received screenshots:", screenshot);
+    res.json({
+      reply: `Hello from the API controller! ${
+        screenshot ? "Screenshot received." : "No screenshot."
+      }`,
+    });
+  } catch (error) {
+    console.log("Error in message controller:", error);
+  }
+};
 
 // 400/500 status test
-// const message = async (req, res) => {
-//   const { text, screenshot } = req.body;
-//   try {
-//     console.log("Received text:", text);
-//     if (text) {
-//       console.log("error here: ", text);
-//       return res.status(400).json({ errorMessage: `400 1  error textissent` });
-//     } else if (screenshot) {
-//       return res
-//         .status(500)
-//         .json({ errorMessage: `500 2 error screenshot sent` });
-//     }
-//     await new Promise((resolve) => setTimeout(resolve, 3000)); // Simulate processing delay
-//     // console.log("Received screenshots:", screenshot);
-//     res.json({
-//       reply: `Hello from the API controller! ${
-//         screenshot ? "Screenshot received." : "No screenshot."
-//       }`,
-//     });
-//   } catch (error) {
-//     console.log("Error in message controller:", error);
-//   }
-// };
+const messageErr = async (req, res) => {
+  const { text, screenshot } = req.body;
+  try {
+    console.log("Received text:", text);
+    if (text) {
+      console.log("error here: ", text);
+      return res.status(400).json({ errorMessage: `400 1  error textissent` });
+    } else if (screenshot) {
+      return res
+        .status(500)
+        .json({ errorMessage: `500 2 error screenshot sent` });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3000)); // Simulate processing delay
+    // console.log("Received screenshots:", screenshot);
+    res.json({
+      reply: `Hello from the API controller! ${
+        screenshot ? "Screenshot received." : "No screenshot."
+      }`,
+    });
+  } catch (error) {
+    console.log("Error in message controller:", error);
+  }
+};
 
 const message = async (req, res) => {
   try {
@@ -95,4 +95,4 @@ const message = async (req, res) => {
   }
 };
 
-module.exports = { message };
+module.exports = { messageNorm, messageErr, message };
