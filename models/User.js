@@ -34,7 +34,10 @@ const UserSchema = new mongoose.Schema(
     },
 
     stripeCustomerId: { type: String },
-    activeSubscriptionId: { type: Schema.Types.ObjectId, ref: "subscriptions" },
+    activeSubscriptionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "subscriptions",
+    },
 
     lastLoginAt: { type: Date },
   },

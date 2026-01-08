@@ -3,13 +3,17 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "start": "NODE_ENV=production node app.js",
-    "dev": "NODE_ENV=development nodemon app.js",
+    "start": "NODE_ENV=production node server.js",
+    "dev": "NODE_ENV=development nodemon server.js",
     "test": "NODE_ENV=test jest"
   },
+  "type": "commonjs",
   "keywords": [
     "ai",
-    "chat"
+    "chat",
+    "capture",
+    "chatbot",
+    "screenshot"
   ],
   "author": "Mykhaylo Maslyuk",
   "license": "ISC",
@@ -22,6 +26,7 @@
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.18.1",
+    "nodemailer": "^7.0.12",
     "openai": "^5.20.3"
   },
   "devDependencies": {

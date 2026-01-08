@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
-const verifyJWT = (req, res, next) => {
+const protect = (req, res, next) => {
   const authHeader = req.headers.authorization || req.headers.Authorization;
 
   if (!authHeader || !authHeader?.startsWith("Bearer "))
@@ -13,13 +13,9 @@ const verifyJWT = (req, res, next) => {
 
   jwt.verify(token, process.env.ACCESS_SECRET, (err, decoded) => {
     if (err) return res.status(403).json({ message: "Invalid Token!" });
-    const user = {
-      userId: decoded.userId,
-      email: decoded.email,
-    };
-    req.user = user;
+    req.user = decoded;
     next();
   });
 };
 
-module.exports = verifyJWT;
+module.exports = protect;

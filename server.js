@@ -4,10 +4,11 @@ const cors = require("cors");
 
 const dotenv = require("dotenv");
 const indexRoutes = require("./routes/index");
-const apiRoutes = require("./routes/apiRoutes"); //v2
-const waitlistRoutes = require("./routes/waitlistRoutes"); //v2
+const apiRoutes = require("./routes/apiRoutes"); //v1
+const authRoutes = require("./routes/authRoutes"); //v2
+const waitlistRoutes = require("./routes/waitlistRoutes"); //v1
 const connectDB = require("./config/db");
-
+const cookieParser = require("cookie-parser");
 connectDB();
 
 dotenv.config();
@@ -39,9 +40,10 @@ app.use(
 );
 
 app.use(express.json({ limit: "10mb" }));
-
+app.use(cookieParser());
 // Routes
 app.use("/api/v1/", indexRoutes);
+app.use("/api/v2/auth/", authRoutes);
 app.use("/api/v1/ai/", apiRoutes);
 app.use("/api/v1/web/", waitlistRoutes);
 
