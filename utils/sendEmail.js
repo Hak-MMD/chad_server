@@ -27,13 +27,13 @@ async function sendEmail(to, subject, html) {
       to,
       subject,
       html,
-      attachments: [
-        {
-          filename: "icon.png",
-          path: path.join(__dirname, "..", "emails", "images", "icon.png"),
-          cid: "chadailogo",
-        },
-      ],
+      //   attachments: [
+      //     {
+      //       filename: "icon.png",
+      //       path: path.join(__dirname, "..", "emails", "images", "icon.png"),
+      //       cid: "chadailogo",
+      //     },
+      //   ],
     });
 
     console.log("Email sent:", info.messageId);
