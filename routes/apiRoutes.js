@@ -4,12 +4,13 @@ const {
   messageErr,
   messageNorm,
 } = require("../controllers/apiController");
-// import { protect } from "../middlewares/authMiddleware.js";
+const protect = require("../middlewares/authMiddleware");
+const usageLimit = require("../middlewares/usageLimitMiddleware");
 
 const router = express.Router();
 
-// router.post("/message", message);
-// router.post("/message", messageErr);
-router.post("/message", messageNorm);
+router.post("/message", protect, usageLimit(), message);
+// router.post("/message", protect, usageLimit, messageErr);
+// router.post("/message", protect, usageLimit(), messageNorm);
 
 module.exports = router;

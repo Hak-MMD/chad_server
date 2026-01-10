@@ -1,6 +1,9 @@
 const userModel = require("../models/User.js");
-const validatePassword = require("../utils/validatePassword.js");
+const authSessionModel = require("../models/AuthRefresh.js");
+const UsageStats = require("../models/UsageStats.js");
+const EmailVerification = require("../models/EmailVerification.js");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const {
   generateAccessToken,
   generateRefreshToken,
@@ -9,10 +12,9 @@ const {
 } = require("../utils/jwt.js");
 const sendEmail = require("../utils/sendEmail.js");
 const loadTemplate = require("../utils/loadTemplate.js");
-const authSessionModel = require("../models/AuthRefresh.js");
-const crypto = require("crypto");
-const EmailVerification = require("../models/EmailVerification.js");
-// const sendEmail = require("../utils/sendEmail.js"); // Placeholder for email sending utility
+const validatePassword = require("../utils/validatePassword.js");
+const { nextDay, nextMonth } = require("../utils/dateHelpers");
+const { PLANS } = require("../config/plans.js");
 
 const register = async (req, res) => {
   try {
@@ -35,6 +37,11 @@ const register = async (req, res) => {
       passwordHash,
       name,
       authProvider: "email",
+    });
+    await UsageStats.create({
+      user: user._id,
+      dailyResetAt: nextDay(),
+      monthlyResetAt: nextMonth(),
     });
 
     // -----------------------------
@@ -173,16 +180,22 @@ const logout = async (req, res) => {
 
 const getCurrentUser = async (req, res) => {
   const user = await userModel.findById(req.user.id);
-
+  const stats = await UsageStats.findOne({ user: req.user.id });
   res.json({
-    id: user._id,
-    email: user.email,
-    plan: user.plan,
+    user,
     usage: {
-      daily: user.usageSnapshot.dailyRequests,
-      monthly: user.usageSnapshot.monthlyRequests,
+      dailyUsed: stats.dailyCount,
+      dailyLimit: PLANS[user.plan].dailyRequests,
+      monthlyUsed: stats.monthlyCount,
+      monthlyLimit: PLANS[user.plan].monthlyRequests,
     },
   });
+  // res.json({
+  //   id: user._id,
+  //   email: user.email,
+  //   plan: user.plan,
+
+  // });
 };
 
 const verifyEmail = async (req, res) => {

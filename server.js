@@ -44,7 +44,7 @@ app.use(cookieParser());
 // Routes
 app.use("/api/v1/", indexRoutes);
 app.use("/api/v2/auth/", authRoutes);
-app.use("/api/v1/ai/", apiRoutes);
+app.use("/api/v2/ai/", apiRoutes);
 app.use("/api/v1/web/", waitlistRoutes);
 
 const start = async () => {

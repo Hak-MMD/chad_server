@@ -2,27 +2,46 @@ const mongoose = require("mongoose");
 
 const UsageSchema = new mongoose.Schema(
   {
-    userId: {
+    user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "users",
       required: true,
       index: true,
     },
-    chatId: { type: mongoose.Schema.Types.ObjectId, ref: "chats" },
 
-    type: { type: String, enum: ["chat", "image", "analysis"], required: true },
-    model: { type: String },
+    chat: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "chats",
+      index: true,
+    },
 
-    promptTokens: Number,
-    completionTokens: Number,
-    totalTokens: Number,
+    type: {
+      type: String,
+      enum: ["chat", "image", "analysis"],
+      required: true,
+      index: true,
+    },
 
-    costUSD: Number,
-    source: { type: String, enum: ["extension", "website"] },
+    model: {
+      type: String,
+      index: true,
+    },
+
+    promptTokens: { type: Number, default: 0 },
+    completionTokens: { type: Number, default: 0 },
+    totalTokens: { type: Number, default: 0 },
+
+    costUSD: { type: Number, default: 0 },
+
+    source: {
+      type: String,
+      enum: ["extension", "website"],
+      index: true,
+    },
   },
-  { timestamps: { createdAt: true, updatedAt: false } }
+  {
+    timestamps: { createdAt: true, updatedAt: false },
+  }
 );
 
-const usageModel = mongoose.model("usage", UsageSchema);
-
-module.exports = usageModel;
+module.exports = mongoose.model("usage", UsageSchema);
