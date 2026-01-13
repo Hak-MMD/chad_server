@@ -16,6 +16,7 @@ const protect = (req, res, next) => {
   jwt.verify(token, process.env.ACCESS_SECRET, (err, decoded) => {
     if (err) return res.status(403).json({ message: "Invalid Token!" });
     req.user = decoded;
+    console.log("Decoded user in auth middleware: ", req.user);
     next();
   });
   console.log("Auth middleware invoked3 ", req.user);

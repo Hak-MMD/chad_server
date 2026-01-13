@@ -4,6 +4,7 @@ const cors = require("cors");
 
 const dotenv = require("dotenv");
 const indexRoutes = require("./routes/index");
+const adminRoutes = require("./routes/adminRoutes");
 const apiRoutes = require("./routes/apiRoutes"); //v1
 const authRoutes = require("./routes/authRoutes"); //v2
 const waitlistRoutes = require("./routes/waitlistRoutes"); //v1
@@ -42,6 +43,7 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 // Routes
+app.use("/admin/", adminRoutes);
 app.use("/api/v1/", indexRoutes);
 app.use("/api/v2/auth/", authRoutes);
 app.use("/api/v2/ai/", apiRoutes);

@@ -102,7 +102,12 @@ const login = async (req, res) => {
     });
     res.json({
       accessToken,
-      user: { id: user._id, email: user.email, plan: user.plan },
+      user: {
+        id: user._id,
+        email: user.email,
+        plan: user.plan,
+        role: user.role,
+      },
     });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -180,11 +185,14 @@ const logout = async (req, res) => {
 
 const getCurrentUser = async (req, res) => {
   const user = await userModel.findById(req.user.id);
-  const stats = await UsageStats.findOne({ user: req.user.id });
+  // const stats = await UsageStats.findOne({ user: req.user.id });
+  // if (!stats) {
+  let stats = { dailyCount: 0, monthlyCount: 0 };
+  // }
   res.json({
     user,
     usage: {
-      dailyUsed: stats.dailyCount,
+      dailyUsed: stats?.dailyCount,
       dailyLimit: PLANS[user.plan].dailyRequests,
       monthlyUsed: stats.monthlyCount,
       monthlyLimit: PLANS[user.plan].monthlyRequests,
