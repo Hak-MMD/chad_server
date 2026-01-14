@@ -11,15 +11,15 @@ const protect = (req, res, next) => {
       .json({ message: "Unauthorized! Login or Register to be able access!" });
 
   const token = authHeader.split(" ")[1];
-  console.log("Auth middleware invoked2");
+  // console.log("Auth middleware invoked2");
 
   jwt.verify(token, process.env.ACCESS_SECRET, (err, decoded) => {
     if (err) return res.status(403).json({ message: "Invalid Token!" });
     req.user = decoded;
-    console.log("Decoded user in auth middleware: ", req.user);
+    // console.log("Decoded user in auth middleware: ", req.user);
     next();
   });
-  console.log("Auth middleware invoked3 ", req.user);
+  // console.log("Auth middleware invoked3 ", req.user);
 };
 
 module.exports = protect;

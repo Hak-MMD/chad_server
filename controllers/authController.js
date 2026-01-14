@@ -1,4 +1,5 @@
 const userModel = require("../models/User.js");
+const chatModel = require("../models/Chat.js");
 const authSessionModel = require("../models/AuthRefresh.js");
 const UsageStats = require("../models/UsageStats.js");
 const EmailVerification = require("../models/EmailVerification.js");
@@ -38,8 +39,15 @@ const register = async (req, res) => {
       name,
       authProvider: "email",
     });
+
+    await chatModel.create({
+      userId: user._id,
+      source: "extension",
+      title: "New chat",
+      type: "mixed",
+    });
     await UsageStats.create({
-      user: user._id,
+      userId: user._id,
       dailyResetAt: nextDay(),
       monthlyResetAt: nextMonth(),
     });

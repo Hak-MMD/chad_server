@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const UsageStatsSchema = new mongoose.Schema(
   {
-    user: {
+    userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "users",
       unique: true,

@@ -1,14 +1,46 @@
 const openai = require("../config/openai.js");
 const Usage = require("../models/Usage.js");
+const Message = require("../models/Message.js");
 const { PLANS } = require("../config/plans.js");
 const UsageStats = require("../models/UsageStats.js");
 const { calculateUsage } = require("../utils/openaiUsage.js");
+const { uploadImageBase64 } = require("../utils/uploadImage.js");
 
 const message = async (req, res) => {
   console.log("Entered message controller");
   try {
     const { text, screenshot, chatId } = req.body;
     console.log("Received text:", text);
+    console.log("Received screenshot:", screenshot);
+
+    let imageData = null;
+
+    // 1️⃣ Upload image if exists
+    if (screenshot) {
+      imageData = await uploadImageBase64(`${screenshot}`, {
+        folder: "chat-images",
+      });
+    }
+    console.log("Uploaded image data: ", imageData);
+
+    // 2️⃣ Save USER message
+    await Message.create({
+      chatId,
+      userId: req.user.id,
+      role: "user",
+      content: {
+        text: text || null,
+        imageUrl: imageData?.url,
+        imageMeta: imageData
+          ? {
+              width: imageData.width,
+              height: imageData.height,
+              mimeType: imageData.mimeType,
+            }
+          : undefined,
+      },
+    });
+    console.log("User message saved");
     const content = [];
 
     if (text) {
@@ -19,13 +51,15 @@ const message = async (req, res) => {
       content.push({
         type: "image_url",
         image_url: {
-          url: `data:image/jpeg;base64,${screenshot}`,
+          url: imageData.url, //url from uploaded image
+          // url: `data:image/jpeg;base64,${screenshot}`, // insert base64 image data into the ai api
           detail: "low",
         },
       });
     }
     console.log("content to send: ", content);
     console.log("1 api");
+
     // ---- OpenAI call ----
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -54,10 +88,22 @@ const message = async (req, res) => {
     });
     console.log("usage: ", usage);
 
+    // Save AI message
+    await Message.create({
+      chatId,
+      userId: req.user.id,
+      role: "assistant",
+      content: {
+        text: aiMessage,
+      },
+      model: completion.model,
+      ...usage,
+    });
+
     // ---- 1️⃣ Save audit log ----
     await Usage.create({
-      user: req.user.id,
-      chat: chatId || null,
+      userId: req.user.id,
+      chatId: chatId || null,
       type: "chat",
       model: completion.model,
       ...usage,
@@ -67,7 +113,7 @@ const message = async (req, res) => {
 
     // ---- 2️⃣ Increment usage counters ----
     await UsageStats.updateOne(
-      { user: req.user.id },
+      { userId: req.user.id },
       {
         $inc: {
           dailyCount: 1,

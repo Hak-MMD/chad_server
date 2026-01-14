@@ -11,6 +11,12 @@ const PLANS = {
     monthlyRequests: 3000,
     allowImages: true,
   },
+  enterprise: {
+    name: "Enterprise",
+    dailyRequests: 1000,
+    monthlyRequests: 30000,
+    allowImages: true,
+  },
 };
 
 module.exports = { PLANS };

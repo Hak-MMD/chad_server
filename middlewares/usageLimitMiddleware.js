@@ -1,6 +1,7 @@
 const UsageStats = require("../models/UsageStats");
 const resetUsageStats = require("../utils/resetUsageStats");
 const { PLANS } = require("../config/plans");
+const mongoose = require("mongoose");
 
 function usageLimit(options = {}) {
   console.log("Usage limit middleware initialized with options:");
@@ -19,8 +20,14 @@ function usageLimit(options = {}) {
       if (!plan) {
         return res.status(500).json({ error: "Invalid plan configuration" });
       }
+      console.log(user.id);
 
-      const stats = await UsageStats.findOne({ user: user.id });
+      // const stats = await UsageStats.find({});
+      const stats = await UsageStats.findOne({
+        user: user.id,
+      });
+      console.log("Type of req.user.id:", typeof user.id);
+      console.log("Type of stats.user in DB:", typeof stats?.user);
       if (!stats) {
         return res.status(500).json({ error: "Usage stats not found" });
       }

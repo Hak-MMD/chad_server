@@ -2,14 +2,14 @@ const mongoose = require("mongoose");
 
 const UsageSchema = new mongoose.Schema(
   {
-    user: {
+    userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "users",
       required: true,
       index: true,
     },
 
-    chat: {
+    chatId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "chats",
       index: true,

@@ -8,7 +8,7 @@ async function upgradeUserPlan({ userId, plan, periodStart, periodEnd }) {
   if (!user) {
     throw new Error("User not found");
   }
-
+  console.log("User found: ", user);
   // 2️⃣ Create or update subscription record
   const subscription = await subscriptionModel.findOneAndUpdate(
     { userId },
@@ -23,7 +23,7 @@ async function upgradeUserPlan({ userId, plan, periodStart, periodEnd }) {
     },
     { upsert: true, new: true }
   );
-
+  console.log("Subscription updated/created: ", subscription);
   // 3️⃣ Attach active subscription to user
   user.activeSubscriptionId = subscription._id;
   await user.save();

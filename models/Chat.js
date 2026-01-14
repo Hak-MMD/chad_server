@@ -12,7 +12,12 @@ const ChatSchema = new mongoose.Schema(
     title: { type: String },
     type: { type: String, enum: ["text", "image", "mixed"], default: "text" },
 
-    source: { type: String, enum: ["extension", "website"], required: true },
+    source: {
+      type: String,
+      enum: ["extension", "website"],
+      required: true,
+    },
+
     model: { type: String, default: "gpt-4o-mini" },
 
     isArchived: { type: Boolean, default: false },
@@ -21,6 +26,6 @@ const ChatSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-const chatModel = mongoose.model("chats", ChatSchema);
+// ChatSchema.index({ userId: 1 }, { unique: true });
 
-module.exports = chatModel;
+module.exports = mongoose.model("chats", ChatSchema);

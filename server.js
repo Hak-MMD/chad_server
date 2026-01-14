@@ -3,10 +3,11 @@ const mongoose = require("mongoose"); //v2
 const cors = require("cors");
 
 const dotenv = require("dotenv");
-const indexRoutes = require("./routes/index");
+const indexRoutes = require("./routes/index"); //v1
 const adminRoutes = require("./routes/adminRoutes");
-const apiRoutes = require("./routes/apiRoutes"); //v1
+const apiRoutes = require("./routes/apiRoutes"); //v2
 const authRoutes = require("./routes/authRoutes"); //v2
+const chatRoutes = require("./routes/chatRoutes"); //v2
 const waitlistRoutes = require("./routes/waitlistRoutes"); //v1
 const connectDB = require("./config/db");
 const cookieParser = require("cookie-parser");
@@ -47,6 +48,7 @@ app.use("/admin/", adminRoutes);
 app.use("/api/v1/", indexRoutes);
 app.use("/api/v2/auth/", authRoutes);
 app.use("/api/v2/ai/", apiRoutes);
+app.use("/api/v2/chat/", chatRoutes);
 app.use("/api/v1/web/", waitlistRoutes);
 
 const start = async () => {
