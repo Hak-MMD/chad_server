@@ -24,10 +24,10 @@ function usageLimit(options = {}) {
 
       // const stats = await UsageStats.find({});
       const stats = await UsageStats.findOne({
-        user: user.id,
+        userId: user.id,
       });
       console.log("Type of req.user.id:", typeof user.id);
-      console.log("Type of stats.user in DB:", typeof stats?.user);
+      console.log("Type of stats.userId in DB:", typeof stats?.userId);
       if (!stats) {
         return res.status(500).json({ error: "Usage stats not found" });
       }
