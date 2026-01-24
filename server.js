@@ -19,6 +19,7 @@ const PORT = process.env.PORT || 3001;
 const allowedOrigins = [
   "https://chad-ai-nd2k.onrender.com", // your deployed React site
   "chrome-extension://kolefjoacfickglplddbbbahmmjlokop", // your Chrome extension
+  "chrome-extension://ickgehmenchgiejcekmkhncbjcbngbdh", // your Chrome extension
   "http://localhost:3000", // keep for local React dev
   "http://localhost:3001", // keep for local server testing
 ];
