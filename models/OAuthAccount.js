@@ -14,13 +14,10 @@ const OAuthSchema = new mongoose.Schema(
     email: { type: String },
     avatarUrl: { type: String },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-OAuthAccountSchema.index(
-  { provider: 1, providerAccountId: 1 },
-  { unique: true }
-);
+OAuthSchema.index({ provider: 1, providerAccountId: 1 }, { unique: true });
 
 const oAuthModel = mongoose.model("oauth_accounts", OAuthSchema);
 

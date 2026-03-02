@@ -63,8 +63,16 @@ const UserSchema = new mongoose.Schema(
     lastLoginAt: {
       type: Date,
     },
+    loginAttempts: {
+      type: Number,
+      default: 0,
+    },
+
+    lockUntil: {
+      type: Date,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("users", UserSchema);

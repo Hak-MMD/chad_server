@@ -3,6 +3,8 @@ const chatModel = require("../models/Chat.js");
 const authSessionModel = require("../models/AuthRefresh.js");
 const UsageStats = require("../models/UsageStats.js");
 const EmailVerification = require("../models/EmailVerification.js");
+const oauthModel = require("../models/OAuthAccount.js");
+const axios = require("axios");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const {
@@ -86,8 +88,26 @@ const login = async (req, res) => {
     const user = await userModel.findOne({ email });
     console.log("User found:", user);
     if (!user) return res.status(400).json({ error: "Invalid credentials" });
+
+    if (user.lockUntil && user.lockUntil > Date.now()) {
+      return res.status(423).json({
+        error: "Account temporarily locked due to too many failed attempts",
+      });
+    }
     const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) return res.status(400).json({ error: "Invalid credentials" });
+
+    if (!valid) {
+      user.loginAttempts += 1;
+
+      if (user.loginAttempts >= 10) {
+        user.lockUntil = new Date(Date.now() + 30 * 60 * 1000); // 30 min
+        user.loginAttempts = 0;
+      }
+
+      await user.save();
+
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
     console.log(valid);
     const accessToken = generateAccessToken(user);
 
@@ -108,6 +128,13 @@ const login = async (req, res) => {
       sameSite: "strict",
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
+    // Reset login attempts on successful login
+    user.loginAttempts = 0;
+    user.lockUntil = null;
+    user.lastLoginAt = new Date();
+
+    await user.save();
+
     res.json({
       accessToken,
       user: {
@@ -179,7 +206,7 @@ const logout = async (req, res) => {
 
       await authSessionModel.updateOne(
         { refreshTokenHash: hash },
-        { revokedAt: new Date() }
+        { revokedAt: new Date() },
       );
     }
 
@@ -291,6 +318,206 @@ const resendVerification = async (req, res) => {
   }
 };
 
+//sessions controllers
+const getSessions = async (req, res) => {
+  const sessions = await authSessionModel
+    .find({ userId: req.user.id, revokedAt: null })
+    .sort({ createdAt: -1 });
+
+  res.json(sessions);
+};
+
+const revokeSession = async (req, res) => {
+  const session = await authSessionModel.findOne({
+    _id: req.params.id,
+    userId: req.user.id,
+  });
+
+  if (!session) {
+    return res.status(404).json({ error: "Session not found" });
+  }
+
+  session.revokedAt = new Date();
+  await session.save();
+
+  res.json({ message: "Session revoked" });
+};
+
+///* GOOGLE AUTH PLACEHOLDERS - IMPLEMENTATION IN PROGRESS *///
+
+const googleAuthStart = async (req, res) => {
+  const state = crypto.randomBytes(32).toString("hex");
+
+  res.cookie("oauth_state", state, {
+    httpOnly: true,
+    secure: false,
+    sameSite: "lax",
+    maxAge: 10 * 60 * 1000,
+  });
+
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+    response_type: "code",
+    scope: "openid email profile",
+    access_type: "offline",
+    prompt: "consent",
+    state,
+  });
+
+  const googleAuthURL = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+
+  return res.redirect(googleAuthURL);
+};
+
+const googleAuthCallback = async (req, res) => {
+  try {
+    const { code, state } = req.query;
+
+    const storedState = req.cookies.oauth_state;
+
+    if (!state || state !== storedState) {
+      return res.status(400).json({ error: "Invalid OAuth state" });
+    }
+
+    res.clearCookie("oauth_state");
+
+    if (!code) {
+      return res.status(400).json({ error: "Missing Google auth code" });
+    }
+
+    // 1 Exchange code for tokens
+    const tokenResponse = await axios.post(
+      "https://oauth2.googleapis.com/token",
+      {
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+        grant_type: "authorization_code",
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    const { access_token, id_token } = tokenResponse.data;
+
+    // 2 Get user profile from Google
+    const googleUser = await axios.get(
+      "https://www.googleapis.com/oauth2/v3/userinfo",
+      {
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+        },
+      },
+    );
+
+    const { sub, email, name, picture } = googleUser.data;
+
+    // sub = google user ID
+    const providerAccountId = sub;
+
+    // 3 Check if OAuth account already exists
+    let oauthAccount = await oauthModel.findOne({
+      provider: "google",
+      providerAccountId,
+    });
+
+    let user;
+
+    if (oauthAccount) {
+      // Existing OAuth user → login
+      user = await userModel.findById(oauthAccount.userId);
+    } else {
+      // 4 Check if user with this email already exists
+      user = await userModel.findOne({ email });
+
+      if (!user) {
+        // create new user (google signup)
+
+        user = await userModel.create({
+          email,
+          name,
+          avatarUrl: picture,
+          authProvider: "google",
+          emailVerified: true,
+        });
+
+        await chatModel.create({
+          userId: user._id,
+          source: "extension",
+          title: "New chat",
+          type: "mixed",
+        });
+
+        await UsageStats.create({
+          userId: user._id,
+          dailyResetAt: nextDay(),
+          monthlyResetAt: nextMonth(),
+        });
+      } else {
+        // EMAIL ACCOUNT EXISTS
+
+        if (user.authProvider === "email") {
+          // SECURITY RULE:
+          // Do not auto-link Google accounts to email accounts
+
+          return res.status(400).json({
+            error:
+              "An account with this email already exists. Please login using email.",
+          });
+        }
+      }
+
+      // 6 Link OAuth account
+      await oauthModel.create({
+        userId: user._id,
+        provider: "google",
+        providerAccountId,
+        email,
+        avatarUrl: picture,
+      });
+    }
+
+    // 7 Update login timestamp
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    // 8 Generate tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken();
+    const refreshHash = hashToken(refreshToken);
+
+    await authSessionModel.create({
+      userId: user._id,
+      refreshTokenHash: refreshHash,
+      userAgent: req.headers["user-agent"],
+      ipAddress: req.ip,
+      expiresAt: refreshExpiryDate(),
+      lastUsedAt: new Date(),
+    });
+
+    // 9 Set refresh cookie
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: false, // change to true in production
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    // 10 Redirect to frontend with access token
+    return res.redirect(
+      `http://localhost:3000/oauth-success?token=${accessToken}`,
+    );
+  } catch (error) {
+    console.error("Google OAuth Error:", error.response?.data || error.message);
+    res.status(500).json({ error: "Google authentication failed" });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -299,4 +526,8 @@ module.exports = {
   getCurrentUser,
   verifyEmail,
   resendVerification,
+  googleAuthStart,
+  googleAuthCallback,
+  getSessions,
+  revokeSession,
 };
