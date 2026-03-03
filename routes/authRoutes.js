@@ -21,5 +21,6 @@ router.delete("/sessions/:id", protect, authController.revokeSession);
 //google auth
 router.get("/google", authController.googleAuthStart);
 router.get("/google/callback", authController.googleAuthCallback);
+router.post("/google/link-confirm", authController.confirmGoogleLink);
 
 module.exports = router;

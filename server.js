@@ -18,6 +18,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.set("trust proxy", 1);
+
 // Middleware
 const allowedOrigins = [
   "https://chad-ai-nd2k.onrender.com", // your deployed React site
@@ -30,7 +32,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow requests with no origin (like mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
@@ -38,8 +39,9 @@ app.use(
         return callback(new Error("Not allowed by CORS"));
       }
     },
-    credentials: true, // allow cookies/authorization headers if needed
-  })
+    credentials: true,
+    optionsSuccessStatus: 200,
+  }),
 );
 
 app.use(express.json({ limit: "10mb" }));

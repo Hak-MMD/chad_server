@@ -4,6 +4,7 @@ const authSessionModel = require("../models/AuthRefresh.js");
 const UsageStats = require("../models/UsageStats.js");
 const EmailVerification = require("../models/EmailVerification.js");
 const oauthModel = require("../models/OAuthAccount.js");
+const AccountLink = require("../models/AccountLink.js");
 const axios = require("axios");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
@@ -18,6 +19,7 @@ const loadTemplate = require("../utils/loadTemplate.js");
 const validatePassword = require("../utils/validatePassword.js");
 const { nextDay, nextMonth } = require("../utils/dateHelpers");
 const { PLANS } = require("../config/plans.js");
+const isProd = process.env.NODE_ENV === "production";
 
 const register = async (req, res) => {
   try {
@@ -30,8 +32,17 @@ const register = async (req, res) => {
     }
 
     const existing = await userModel.findOne({ email });
-    if (existing)
-      return res.status(400).json({ error: "Email already exists" });
+    if (existing) {
+      if (existing.authProvider === "email") {
+        return res.status(400).json({ error: "Email already exists" });
+      }
+
+      // existing.authProvider === "google"
+      return res.status(400).json({
+        error:
+          "This email is already used with Google login. Please sign in with Google.",
+      });
+    }
 
     const passwordHash = await bcrypt.hash(password, 12);
 
@@ -54,23 +65,18 @@ const register = async (req, res) => {
       monthlyResetAt: nextMonth(),
     });
 
-    // -----------------------------
-    // EMAIL VERIFICATION LOGIC
-    // -----------------------------
+    // EMAIL VERIFICATION LOGIC (unchanged)
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const codeHash = crypto.createHash("sha256").update(code).digest("hex");
 
     await EmailVerification.create({
       userId: user._id,
       codeHash,
-      expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     });
 
-    // Load HTML template
     let html = loadTemplate("verification.html");
-    // Replace placeholder with actual code
     html = html.replace("{{CODE}}", code);
-    // Send email
     await sendEmail(user.email, "ChadAI: Please verify your email!", html);
 
     res.json({
@@ -89,11 +95,18 @@ const login = async (req, res) => {
     console.log("User found:", user);
     if (!user) return res.status(400).json({ error: "Invalid credentials" });
 
+    if (user.authProvider === "google") {
+      return res.status(400).json({
+        error: "This account uses Google login. Please sign in with Google.",
+      });
+    }
+
     if (user.lockUntil && user.lockUntil > Date.now()) {
       return res.status(423).json({
         error: "Account temporarily locked due to too many failed attempts",
       });
     }
+
     const valid = await bcrypt.compare(password, user.passwordHash);
 
     if (!valid) {
@@ -108,12 +121,11 @@ const login = async (req, res) => {
 
       return res.status(400).json({ error: "Invalid credentials" });
     }
-    console.log(valid);
-    const accessToken = generateAccessToken(user);
 
-    console.log("access: ", accessToken);
+    const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken();
     const refreshHash = hashToken(refreshToken);
+
     await authSessionModel.create({
       userId: user._id,
       refreshTokenHash: refreshHash,
@@ -122,17 +134,17 @@ const login = async (req, res) => {
       expiresAt: refreshExpiryDate(),
       lastUsedAt: new Date(),
     });
+
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: "strict",
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
-    // Reset login attempts on successful login
+
     user.loginAttempts = 0;
     user.lockUntil = null;
     user.lastLoginAt = new Date();
-
     await user.save();
 
     res.json({
@@ -145,6 +157,7 @@ const login = async (req, res) => {
       },
     });
   } catch (err) {
+    console.error("Login error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -185,10 +198,10 @@ const refreshToken = async (req, res) => {
 
     const accessToken = generateAccessToken(user);
 
-    res.cookie("refreshToken", newRefreshToken, {
+    res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: "strict",
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
@@ -350,7 +363,7 @@ const googleAuthStart = async (req, res) => {
 
   res.cookie("oauth_state", state, {
     httpOnly: true,
-    secure: false,
+    secure: isProd,
     sameSite: "lax",
     maxAge: 10 * 60 * 1000,
   });
@@ -403,7 +416,7 @@ const googleAuthCallback = async (req, res) => {
       },
     );
 
-    const { access_token, id_token } = tokenResponse.data;
+    const { access_token } = tokenResponse.data;
 
     // 2 Get user profile from Google
     const googleUser = await axios.get(
@@ -416,8 +429,6 @@ const googleAuthCallback = async (req, res) => {
     );
 
     const { sub, email, name, picture } = googleUser.data;
-
-    // sub = google user ID
     const providerAccountId = sub;
 
     // 3 Check if OAuth account already exists
@@ -429,15 +440,14 @@ const googleAuthCallback = async (req, res) => {
     let user;
 
     if (oauthAccount) {
-      // Existing OAuth user → login
+      // Existing Google user → login
       user = await userModel.findById(oauthAccount.userId);
     } else {
-      // 4 Check if user with this email already exists
+      // No OAuth record → check if user with this email exists
       user = await userModel.findOne({ email });
 
       if (!user) {
-        // create new user (google signup)
-
+        // Create new Google user
         user = await userModel.create({
           email,
           name,
@@ -458,28 +468,61 @@ const googleAuthCallback = async (req, res) => {
           dailyResetAt: nextDay(),
           monthlyResetAt: nextMonth(),
         });
+
+        await oauthModel.create({
+          userId: user._id,
+          provider: "google",
+          providerAccountId,
+          email,
+          avatarUrl: picture,
+        });
       } else {
-        // EMAIL ACCOUNT EXISTS
-
+        // Email user exists → start linking flow
         if (user.authProvider === "email") {
-          // SECURITY RULE:
-          // Do not auto-link Google accounts to email accounts
+          const rawToken = crypto.randomBytes(32).toString("hex");
+          const tokenHash = crypto
+            .createHash("sha256")
+            .update(rawToken)
+            .digest("hex");
 
-          return res.status(400).json({
-            error:
-              "An account with this email already exists. Please login using email.",
+          const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+          await AccountLink.create({
+            userId: user._id,
+            provider: "google",
+            providerAccountId,
+            email,
+            tokenHash,
+            expiresAt,
+          });
+
+          const linkUrl = `${process.env.FRONTEND_URL}/link-google?token=${rawToken}`;
+
+          let html = loadTemplate("link-google.html");
+          html = html.replace("{{LINK_URL}}", linkUrl);
+
+          await sendEmail(
+            user.email,
+            "ChadAI: Confirm linking your Google account",
+            html,
+          );
+
+          return res.redirect(
+            `${process.env.FRONTEND_URL}/link-google-pending`,
+          );
+        }
+
+        // Edge case: user exists and is Google user but no oauth record
+        if (user.authProvider === "google") {
+          await oauthModel.create({
+            userId: user._id,
+            provider: "google",
+            providerAccountId,
+            email,
+            avatarUrl: picture,
           });
         }
       }
-
-      // 6 Link OAuth account
-      await oauthModel.create({
-        userId: user._id,
-        provider: "google",
-        providerAccountId,
-        email,
-        avatarUrl: picture,
-      });
     }
 
     // 7 Update login timestamp
@@ -500,21 +543,114 @@ const googleAuthCallback = async (req, res) => {
       lastUsedAt: new Date(),
     });
 
-    // 9 Set refresh cookie
+    // res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: false,
+    //   sameSite: "lax",
+    //   maxAge: 30 * 24 * 60 * 60 * 1000,
+    // });
+
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: false, // change to true in production
-      sameSite: "lax",
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
-    // 10 Redirect to frontend with access token
     return res.redirect(
-      `http://localhost:3000/oauth-success?token=${accessToken}`,
+      `${process.env.FRONTEND_URL}/oauth-success?token=${accessToken}`,
     );
   } catch (error) {
     console.error("Google OAuth Error:", error.response?.data || error.message);
     res.status(500).json({ error: "Google authentication failed" });
+  }
+};
+
+const confirmGoogleLink = async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ error: "Missing token" });
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const linkRecord = await AccountLink.findOne({
+      tokenHash,
+      usedAt: null,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!linkRecord) {
+      return res.status(400).json({ error: "Invalid or expired link" });
+    }
+
+    const user = await userModel.findById(linkRecord.userId);
+    if (!user) {
+      return res.status(400).json({ error: "User not found" });
+    }
+
+    // Create OAuth account if missing
+    let oauthAccount = await oauthModel.findOne({
+      provider: linkRecord.provider,
+      providerAccountId: linkRecord.providerAccountId,
+    });
+
+    if (!oauthAccount) {
+      oauthAccount = await oauthModel.create({
+        userId: user._id,
+        provider: linkRecord.provider,
+        providerAccountId: linkRecord.providerAccountId,
+        email: linkRecord.email,
+        avatarUrl: user.avatarUrl,
+      });
+    }
+
+    linkRecord.usedAt = new Date();
+    await linkRecord.save();
+
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken();
+    const refreshHash = hashToken(refreshToken);
+
+    await authSessionModel.create({
+      userId: user._id,
+      refreshTokenHash: refreshHash,
+      userAgent: req.headers["user-agent"],
+      ipAddress: req.ip,
+      expiresAt: refreshExpiryDate(),
+      lastUsedAt: new Date(),
+    });
+
+    // res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: false,
+    //   sameSite: "lax",
+    //   maxAge: 30 * 24 * 60 * 60 * 1000,
+    // });
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.json({
+      accessToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        plan: user.plan,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error("Confirm Google link error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 };
 
@@ -530,4 +666,5 @@ module.exports = {
   googleAuthCallback,
   getSessions,
   revokeSession,
+  confirmGoogleLink,
 };
