@@ -9,6 +9,10 @@ const apiRoutes = require("./routes/apiRoutes"); //v2
 const authRoutes = require("./routes/authRoutes"); //v2
 const chatRoutes = require("./routes/chatRoutes"); //v2
 const waitlistRoutes = require("./routes/waitlistRoutes"); //v1
+const billingRoutes = require("./routes/billingRoutes"); // v2
+const {
+  handleStripeWebhook,
+} = require("./controllers/stripeWebhookController"); // v2
 const connectDB = require("./config/db");
 const cookieParser = require("cookie-parser");
 connectDB();
@@ -44,14 +48,23 @@ app.use(
   }),
 );
 
+// Stripe webhook MUST use raw body
+app.post(
+  "/api/v2/billing/webhook",
+  express.raw({ type: "application/json" }),
+  handleStripeWebhook,
+);
+
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
+
 // Routes
 app.use("/admin/", adminRoutes);
 app.use("/api/v1/", indexRoutes);
 app.use("/api/v2/auth/", authRoutes);
 app.use("/api/v2/ai/", apiRoutes);
 app.use("/api/v2/chat/", chatRoutes);
+app.use("/api/v2/billing/", billingRoutes);
 app.use("/api/v1/web/", waitlistRoutes);
 
 const start = async () => {

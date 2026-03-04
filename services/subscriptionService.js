@@ -1,44 +1,61 @@
 const User = require("../models/User");
-const subscriptionModel = require("../models/Subscription");
+const Subscription = require("../models/Subscription");
 
-async function upgradeUserPlan({ userId, plan, periodStart, periodEnd }) {
-  // 1️⃣ Update user plan
-  const user = await User.findByIdAndUpdate(userId, { plan }, { new: true });
+// Called when Stripe subscription is active/trialing/past_due
+async function applyActiveSubscription({
+  userId,
+  plan,
+  stripeCustomerId,
+  stripeSubscriptionId,
+  currentPeriodStart,
+  currentPeriodEnd,
+  cancelAtPeriodEnd,
+  status,
+}) {
+  const user = await User.findById(userId);
+  if (!user) throw new Error("User not found");
 
-  if (!user) {
-    throw new Error("User not found");
-  }
-  console.log("User found: ", user);
-  // 2️⃣ Create or update subscription record
-  const subscription = await subscriptionModel.findOneAndUpdate(
-    { userId },
+  const subscription = await Subscription.findOneAndUpdate(
+    { stripeSubscriptionId },
     {
       userId,
       plan,
-      status: "active",
-      stripeCustomerId: "", // To be filled with real Stripe customer ID
-      stripeSubscriptionId: "", // To be filled with real Stripe subscription ID
-      currentPeriodStart: periodStart,
-      currentPeriodEnd: periodEnd,
+      status,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      currentPeriodStart,
+      currentPeriodEnd,
+      cancelAtPeriodEnd,
     },
-    { upsert: true, new: true }
+    { upsert: true, new: true },
   );
-  console.log("Subscription updated/created: ", subscription);
-  // 3️⃣ Attach active subscription to user
+
+  user.plan = plan;
   user.activeSubscriptionId = subscription._id;
   await user.save();
 
   return { user, subscription };
 }
 
-async function downgradeUserPlan(userId) {
-  const user = await User.findByIdAndUpdate(userId, { plan: "free" });
+// Called when Stripe subscription is canceled/unpaid/expired
+async function applyCanceledSubscription({ userId, stripeSubscriptionId }) {
+  const user = await User.findById(userId);
+  if (!user) throw new Error("User not found");
 
-  const subscription = await subscriptionModel.findOneAndUpdate(
-    { userId },
-    { status: "canceled" }
+  const subscription = await Subscription.findOneAndUpdate(
+    { stripeSubscriptionId },
+    { status: "canceled" },
+    { new: true },
   );
+
+  user.plan = "free";
+  user.activeSubscriptionId = null;
+  await user.save();
+
   return { user, subscription };
 }
 
-module.exports = { upgradeUserPlan, downgradeUserPlan };
+module.exports = {
+  applyActiveSubscription,
+  applyCanceledSubscription,
+};
