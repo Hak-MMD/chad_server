@@ -29,8 +29,13 @@ const UsageStatsSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    modelTokenMonthly: {
+      type: Map,
+      of: Number,
+      default: {},
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("usage_stats", UsageStatsSchema);

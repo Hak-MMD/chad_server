@@ -1,38 +1,27 @@
+// middlewares/usageLimitMiddleware.js
 const UsageStats = require("../models/UsageStats");
 const resetUsageStats = require("../utils/resetUsageStats");
 const { PLANS } = require("../config/plans");
-const mongoose = require("mongoose");
 
 function usageLimit(options = {}) {
-  console.log("Usage limit middleware initialized with options:");
   return async (req, res, next) => {
     try {
       const user = req.user;
-      console.log(req.user);
-      console.log("Usage limit check for user: ", user ? user.id : "none");
       if (!user) {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
       const planKey = user.plan || "free";
       const plan = PLANS[planKey];
-
       if (!plan) {
         return res.status(500).json({ error: "Invalid plan configuration" });
       }
-      console.log(user.id);
 
-      // const stats = await UsageStats.find({});
-      const stats = await UsageStats.findOne({
-        userId: user.id,
-      });
-      console.log("Type of req.user.id:", typeof user.id);
-      console.log("Type of stats.userId in DB:", typeof stats?.userId);
+      const stats = await UsageStats.findOne({ userId: user.id });
       if (!stats) {
         return res.status(500).json({ error: "Usage stats not found" });
       }
 
-      // IMPORTANT: await reset
       await resetUsageStats(stats);
 
       if (stats.dailyCount >= plan.dailyRequests) {
@@ -56,8 +45,8 @@ function usageLimit(options = {}) {
         });
       }
 
-      // Pass stats forward (read-only usage)
       req.usageStats = stats;
+      req.plan = plan;
       next();
     } catch (err) {
       console.error("Usage limit middleware error:", err);

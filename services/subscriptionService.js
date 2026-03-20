@@ -5,6 +5,7 @@ const Subscription = require("../models/Subscription");
 async function applyActiveSubscription({
   userId,
   plan,
+  interval,
   stripeCustomerId,
   stripeSubscriptionId,
   currentPeriodStart,
@@ -20,6 +21,7 @@ async function applyActiveSubscription({
     {
       userId,
       plan,
+      interval,
       status,
       stripeCustomerId,
       stripeSubscriptionId,

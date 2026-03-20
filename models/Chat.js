@@ -17,13 +17,16 @@ const ChatSchema = new mongoose.Schema(
       enum: ["extension", "website"],
       required: true,
     },
+    conversationSummary: { type: String, default: "" },
+    messageCount: { type: Number, default: 0 },
+    lastSummaryAt: { type: Number, default: 0 },
 
-    model: { type: String, default: "gpt-4o-mini" },
+    model: { type: String, default: "gpt-5-nano" },
 
     isArchived: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // ChatSchema.index({ userId: 1 }, { unique: true });

@@ -12,7 +12,9 @@ const SubscriptionSchema = new mongoose.Schema(
     stripeCustomerId: { type: String, required: true },
     stripeSubscriptionId: { type: String, required: true, unique: true },
 
-    plan: { type: String, enum: ["pro", "enterprise"], required: true },
+    plan: { type: String, enum: ["basic", "pro", "unlimited"], required: true },
+    interval: { type: String, enum: ["monthly", "yearly"], required: true },
+
     status: {
       type: String,
       enum: ["trialing", "active", "past_due", "canceled"],
@@ -23,9 +25,7 @@ const SubscriptionSchema = new mongoose.Schema(
     currentPeriodEnd: Date,
     cancelAtPeriodEnd: Boolean,
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-const subscriptionModel = mongoose.model("subscriptions", SubscriptionSchema);
-
-module.exports = subscriptionModel;
+module.exports = mongoose.model("subscriptions", SubscriptionSchema);

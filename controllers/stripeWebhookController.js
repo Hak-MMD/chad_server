@@ -9,7 +9,6 @@ const webhookSecret = isLive
   ? process.env.STRIPE_WEBHOOK_SECRET_LIVE
   : process.env.STRIPE_WEBHOOK_SECRET_TEST;
 
-// Map Stripe price ID -> internal plan key ("pro" | "enterprise")
 function mapPriceToPlan(priceId) {
   for (const [planKey, planConfig] of Object.entries(PLANS)) {
     if (
@@ -25,7 +24,7 @@ function mapPriceToPlan(priceId) {
 async function handleSubscriptionEvent(subscription) {
   const stripeSubscriptionId = subscription.id;
   const stripeCustomerId = subscription.customer;
-  const status = subscription.status; // trialing, active, past_due, canceled, unpaid, etc.
+  const status = subscription.status;
   const currentPeriodStart = new Date(subscription.current_period_start * 1000);
   const currentPeriodEnd = new Date(subscription.current_period_end * 1000);
   const cancelAtPeriodEnd = subscription.cancel_at_period_end || false;
@@ -34,48 +33,38 @@ async function handleSubscriptionEvent(subscription) {
   const priceId = price?.id;
 
   const planKey = priceId ? mapPriceToPlan(priceId) : null;
+  const intervalRaw = price?.recurring?.interval; // "month" | "year"
+  const interval = intervalRaw === "year" ? "yearly" : "monthly";
 
-  if (!planKey || !["pro", "enterprise"].includes(planKey)) {
+  if (!planKey || !["basic", "pro", "unlimited"].includes(planKey)) {
     console.warn("Unknown or unsupported plan for price:", priceId);
     return;
   }
 
-  // Find user by stripeCustomerId
-  const user = await User.findOne({ stripeCustomerId: stripeCustomerId });
+  const user = await User.findOne({ stripeCustomerId });
   if (!user) {
     console.warn("No user found for stripeCustomerId:", stripeCustomerId);
     return;
   }
 
-  // Upsert subscription record
-  const subscriptionDoc = await Subscription.findOneAndUpdate(
-    { stripeSubscriptionId },
-    {
+  if (["active", "trialing", "past_due"].includes(status)) {
+    await applyActiveSubscription({
       userId: user._id,
+      plan: planKey,
+      interval,
       stripeCustomerId,
       stripeSubscriptionId,
-      plan: planKey,
-      status:
-        status === "incomplete" || status === "incomplete_expired"
-          ? "canceled"
-          : status,
       currentPeriodStart,
       currentPeriodEnd,
       cancelAtPeriodEnd,
-    },
-    { upsert: true, new: true },
-  );
-
-  // Update user plan based on subscription status
-  if (["active", "trialing", "past_due"].includes(status)) {
-    user.plan = planKey;
-    user.activeSubscriptionId = subscriptionDoc._id;
-  } else if (["canceled", "unpaid", "incomplete_expired"].includes(status)) {
-    user.plan = "free";
-    user.activeSubscriptionId = null;
+      status,
+    });
+  } else {
+    await applyCanceledSubscription({
+      userId: user._id,
+      stripeSubscriptionId,
+    });
   }
-
-  await user.save();
 }
 
 const handleStripeWebhook = async (req, res) => {
@@ -91,7 +80,6 @@ const handleStripeWebhook = async (req, res) => {
   }
 
   try {
-    // Idempotency: store event and skip if already processed
     let existing = await StripeEvent.findOne({ stripeEventId: event.id });
     if (existing && existing.processed) {
       return res.status(200).json({ received: true, duplicate: true });
@@ -109,20 +97,15 @@ const handleStripeWebhook = async (req, res) => {
     switch (event.type) {
       case "customer.subscription.created":
       case "customer.subscription.updated":
-      case "customer.subscription.deleted": {
-        const subscription = event.data.object;
-        await handleSubscriptionEvent(subscription);
+      case "customer.subscription.deleted":
+        await handleSubscriptionEvent(event.data.object);
         break;
-      }
 
       case "invoice.payment_succeeded":
-      case "invoice.payment_failed": {
-        // You can add logging or future logic here if needed
+      case "invoice.payment_failed":
         break;
-      }
 
       default:
-        // Ignore other events for now
         break;
     }
 

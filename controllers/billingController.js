@@ -7,11 +7,8 @@ const FRONTEND_URL =
     ? "https://chad-ai-nd2k.onrender.com"
     : "http://localhost:3000";
 
-// Ensure Stripe customer exists or create one
 async function getOrCreateStripeCustomer(user) {
-  if (user.stripeCustomerId) {
-    return user.stripeCustomerId;
-  }
+  if (user.stripeCustomerId) return user.stripeCustomerId;
 
   const customer = await stripe.customers.create({
     email: user.email,
@@ -24,12 +21,11 @@ async function getOrCreateStripeCustomer(user) {
   return customer.id;
 }
 
-// Create Checkout Session
 const createCheckoutSession = async (req, res) => {
   try {
     const { plan, interval } = req.body;
 
-    if (!["pro", "enterprise"].includes(plan)) {
+    if (!["basic", "pro", "unlimited"].includes(plan)) {
       return res.status(400).json({ error: "Invalid plan" });
     }
 
@@ -71,7 +67,6 @@ const createCheckoutSession = async (req, res) => {
   }
 };
 
-// Create Billing Portal Session
 const createPortalSession = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);

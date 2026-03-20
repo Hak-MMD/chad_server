@@ -29,13 +29,14 @@ const MessageSchema = new mongoose.Schema(
         mimeType: String,
       },
     },
+    summary: { type: String },
 
     model: { type: String },
     promptTokens: { type: Number },
     completionTokens: { type: Number },
     totalTokens: { type: Number },
   },
-  { timestamps: { createdAt: true, updatedAt: false } }
+  { timestamps: { createdAt: true, updatedAt: false } },
 );
 
 const messageModel = mongoose.model("messages", MessageSchema);
