@@ -59,7 +59,7 @@ async function summarizeMessage(messageId) {
   }
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-5.0-nano", // cheap + good for summarization
+    model: "gpt-5-nano", // cheap + good for summarization
     messages: [
       {
         role: "system",
@@ -107,7 +107,7 @@ async function summarizeConversation(chatId) {
     .join("\n\n");
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-5.0-mini", // higher quality for conversation summary
+    model: "gpt-5-mini", // higher quality for conversation summary
     messages: [
       {
         role: "system",

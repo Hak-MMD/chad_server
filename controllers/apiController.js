@@ -65,6 +65,8 @@ const message = async (req, res) => {
       },
     });
 
+    console.log("context messages: ", contextMessages);
+
     // 4) Select model
     const {
       model: modelToUse,

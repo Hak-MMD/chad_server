@@ -1,5 +1,5 @@
 const MODEL_PRICING = {
-  "gpt-5.0-nano": {
+  "gpt-5-nano": {
     prompt: 0.05 / 1_000_000,
     completion: 0.4 / 1_000_000,
   },
@@ -7,7 +7,7 @@ const MODEL_PRICING = {
     prompt: 0.2 / 1_000_000,
     completion: 1.25 / 1_000_000,
   },
-  "gpt-5.0-mini": {
+  "gpt-5-mini": {
     prompt: 0.25 / 1_000_000,
     completion: 2.0 / 1_000_000,
   },
