@@ -21,11 +21,26 @@ const MODEL_PRICING = {
   },
 };
 
+function normalizeModelName(model) {
+  if (!model) return model;
+
+  const baseNames = Object.keys(MODEL_PRICING);
+  const found = baseNames.find((base) => model.startsWith(base));
+  return found || model;
+}
+
 function calculateUsage({ model, promptTokens, completionTokens }) {
-  const pricing = MODEL_PRICING[model];
+  console.log("Calculating usage for model:", model);
+  const normalized = normalizeModelName(model);
+  const pricing = MODEL_PRICING[normalized];
 
   if (!pricing) {
-    console.warn("Unknown model for pricing:", model);
+    console.warn(
+      "Unknown model for pricing:",
+      model,
+      "normalized as:",
+      normalized,
+    );
     return {
       model,
       promptTokens,

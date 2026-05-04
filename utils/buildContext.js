@@ -35,6 +35,7 @@ async function buildContext({ chatId, currentUserMessage }) {
     });
   }
 
+  // History: text-only (summary or text or generic image note)
   messages.reverse().forEach((m) => {
     const base =
       m.summary ||
@@ -49,15 +50,14 @@ async function buildContext({ chatId, currentUserMessage }) {
     });
   });
 
-  const currentParts = [];
-  if (currentUserMessage.text) currentParts.push(currentUserMessage.text);
-  if (currentUserMessage.imageUrl)
-    currentParts.push(`User shared an image: ${currentUserMessage.imageUrl}`);
+  // Current message: only text here; image handled in controller
+  // const currentParts = [];
+  // if (currentUserMessage.text) currentParts.push(currentUserMessage.text);
 
-  dynamicSegments.push({
-    role: "user",
-    content: currentParts.join("\n\n"),
-  });
+  // dynamicSegments.push({
+  //   role: "user",
+  //   content: currentParts.join("\n\n"),
+  // });
 
   let allMessages = [...cacheableSegments, ...dynamicSegments];
 

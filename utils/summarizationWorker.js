@@ -9,6 +9,7 @@ const MAX_MESSAGES_PER_CHAT = 200;
 
 const queue = [];
 
+// Simple in-process queue runner
 async function runQueue() {
   if (queue.running) return;
   queue.running = true;
@@ -34,6 +35,7 @@ function enqueue(job) {
   setTimeout(runQueue, 0);
 }
 
+// ---- Message summarization ----
 async function summarizeMessage(messageId) {
   const msg = await Message.findById(messageId);
   if (!msg || msg.summary) return;
@@ -47,31 +49,32 @@ async function summarizeMessage(messageId) {
   const parts = [];
 
   if (hasImage) {
-    parts.push("The user shared an image. Summarize the key visual details.");
+    parts.push(
+      "The user shared an image. Describe the key visual details briefly.",
+    );
     parts.push(`Image URL: ${imageUrl}`);
   }
 
   if (text) {
     parts.push(
-      "Summarize the following text focusing on goals and key details:",
+      "Summarize the following text focusing on user goals, key details, and important context:",
     );
     parts.push(text);
   }
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-5-nano", // cheap + good for summarization
+    model: "gpt-5-nano", // cheap summarization model
     messages: [
       {
         role: "system",
         content:
-          "You create short, information-dense summaries for long-term memory. Keep it under 80 tokens.",
+          "You create short, information-dense summaries for long-term memory. Be clear, concise, and flow-focused.",
       },
       {
         role: "user",
         content: parts.join("\n\n"),
       },
     ],
-    max_tokens: 120,
   });
 
   const summary = completion?.choices?.[0]?.message?.content?.trim();
@@ -81,6 +84,7 @@ async function summarizeMessage(messageId) {
   await msg.save();
 }
 
+// ---- Conversation summarization ----
 async function summarizeConversation(chatId) {
   const chat = await Chat.findById(chatId);
   if (!chat) return;
@@ -100,26 +104,25 @@ async function summarizeConversation(chatId) {
         (m.content?.text
           ? m.content.text.slice(0, 400)
           : m.content?.imageUrl
-            ? "[Image shared]"
+            ? "User shared an image (summarized)."
             : "");
       return `${m.role}: ${base}`;
     })
     .join("\n\n");
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-5-mini", // higher quality for conversation summary
+    model: "gpt-5-mini", // better quality for conversation summary
     messages: [
       {
         role: "system",
         content:
-          "Summarize the conversation so far. Focus on user goals, analyzed images, and important conclusions. Keep it under 150 tokens.",
+          "Summarize the conversation so far. Focus on user goals, analyzed images, and important conclusions. Be concise and flow-focused.",
       },
       {
         role: "user",
         content: lines,
       },
     ],
-    max_tokens: 180,
   });
 
   const summary = completion?.choices?.[0]?.message?.content?.trim();
@@ -132,6 +135,7 @@ async function summarizeConversation(chatId) {
   await pruneOldMessages(chatId);
 }
 
+// ---- Pruning ----
 async function pruneOldMessages(chatId) {
   const count = await Message.countDocuments({ chatId });
   if (count <= MAX_MESSAGES_PER_CHAT) return;

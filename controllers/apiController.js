@@ -22,22 +22,22 @@ const message = async (req, res) => {
     const plan = req.plan;
     const usageStats = req.usageStats;
 
+    // 1) Upload image (if provided)
     let imageData = null;
-
     if (screenshot) {
-      imageData = await uploadImageBase64(`${screenshot}`, {
+      imageData = await uploadImageBase64(screenshot, {
         folder: "chat-images",
       });
     }
 
-    // 1) Save USER message
+    // 2) Save USER message
     const userMessage = await Message.create({
       chatId,
       userId,
       role: "user",
       content: {
         text: text || null,
-        imageUrl: imageData?.url,
+        imageUrl: imageData?.url || null,
         imageMeta: imageData
           ? {
               width: imageData.width,
@@ -48,7 +48,7 @@ const message = async (req, res) => {
       },
     });
 
-    // 2) Update chat counters
+    // 3) Update chat counters
     const chat = await Chat.findById(chatId);
     if (!chat) {
       return res.status(404).json({ errorMessage: "Chat not found" });
@@ -56,18 +56,18 @@ const message = async (req, res) => {
     chat.messageCount = (chat.messageCount || 0) + 1;
     await chat.save();
 
-    // 3) Build context (cacheable + dynamic)
+    // 4) Build context (history text-only, current text-only)
     const { messages: contextMessages } = await buildContext({
       chatId,
-      currentUserMessage: {
-        text,
-        imageUrl: imageData?.url,
-      },
+      // currentUserMessage: {
+      //   text,
+      //   imageUrl: imageData?.url,
+      // },
     });
 
-    console.log("context messages: ", contextMessages);
+    // console.log("context messages: ", contextMessages);
 
-    // 4) Select model
+    // 5) Select model
     const {
       model: modelToUse,
       downgraded,
@@ -85,15 +85,43 @@ const message = async (req, res) => {
       });
     }
 
-    // 5) Call OpenAI
+    // 6) Build OpenAI messages (hybrid vision: only current user message gets image)
+    const openAIMessages = contextMessages.map((m, idx) => {
+      const isLast = idx === contextMessages.length - 1;
+      const isLastUser = isLast && m.role === "user";
+
+      // History + assistant: text-only
+      if (!isLastUser || !imageData?.url) {
+        return {
+          role: m.role,
+          content: [{ type: "text", text: m.content }],
+        };
+      }
+
+      // Current user message: text + image
+      const parts = [];
+      if (m.content) {
+        parts.push({ type: "text", text: m.content });
+      }
+      parts.push({
+        type: "image_url",
+        image_url: {
+          url: imageData.url,
+        },
+      });
+
+      return {
+        role: "user",
+        content: parts,
+      };
+    });
+
+    console.log("final messages obj: ", openAIMessages);
+
+    // 7) Call OpenAI
     const completion = await openai.chat.completions.create({
       model: modelToUse,
-      messages: contextMessages.map((m) => ({
-        role: m.role,
-        content: [{ type: "text", text: m.content }],
-      })),
-      // When you move to an API that supports cached input,
-      // you can attach cache-control metadata here for system + summary segments.
+      messages: openAIMessages,
     });
 
     const aiMessageText = completion?.choices?.[0]?.message?.content;
@@ -103,14 +131,14 @@ const message = async (req, res) => {
       });
     }
 
-    // 6) Token & cost calculation
+    // 8) Token & cost calculation
     const usage = calculateUsage({
       model: completion.model,
       promptTokens: completion.usage?.prompt_tokens || 0,
       completionTokens: completion.usage?.completion_tokens || 0,
     });
 
-    // 7) Save AI message
+    // 9) Save AI message
     const assistantMessage = await Message.create({
       chatId,
       userId,
@@ -122,7 +150,7 @@ const message = async (req, res) => {
       ...usage,
     });
 
-    // 8) Save audit log
+    // 10) Save audit log
     await Usage.create({
       userId,
       chatId: chatId || null,
@@ -132,7 +160,7 @@ const message = async (req, res) => {
       source: "extension",
     });
 
-    // 9) Increment usage counters (requests + tokens)
+    // 11) Increment usage counters
     await UsageStats.updateOne(
       { userId },
       {
@@ -144,7 +172,7 @@ const message = async (req, res) => {
       },
     );
 
-    // 10) Async summarization
+    // 12) Async summarization (message + conversation)
     enqueueMessageSummary(userMessage._id);
     enqueueMessageSummary(assistantMessage._id);
 
@@ -155,7 +183,7 @@ const message = async (req, res) => {
       enqueueConversationSummary(chatId);
     }
 
-    // 11) Respond to client
+    // 13) Respond to client
     res.status(200).json({
       reply: aiMessageText,
       modelUsed: completion.model,
@@ -178,6 +206,8 @@ const message = async (req, res) => {
     });
   }
 };
+
+module.exports = { message };
 
 // For testing test edpoints:
 
