@@ -116,7 +116,9 @@ const message = async (req, res) => {
       };
     });
 
-    console.log("final messages obj: ", openAIMessages);
+    // console.log("final messages obj: ", openAIMessages);
+    console.log("final messages obj: ");
+    console.dir(openAIMessages, { depth: null });
 
     // 7) Call OpenAI
     const completion = await openai.chat.completions.create({

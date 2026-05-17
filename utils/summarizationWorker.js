@@ -52,14 +52,19 @@ async function summarizeMessage(messageId) {
     parts.push(
       "The user shared an image. Describe the key visual details briefly.",
     );
-    parts.push(`Image URL: ${imageUrl}`);
+    parts.push({
+      type: "image_url",
+      image_url: {
+        url: imageUrl,
+      },
+    });
   }
 
   if (text) {
-    parts.push(
-      "Summarize the following text focusing on user goals, key details, and important context:",
-    );
-    parts.push(text);
+    parts.push({
+      type: "text",
+      text: `Summarize text. Focus on user goals, key details, and important context: ${text}`,
+    });
   }
 
   const completion = await openai.chat.completions.create({
@@ -72,7 +77,7 @@ async function summarizeMessage(messageId) {
       },
       {
         role: "user",
-        content: parts.join("\n\n"),
+        content: parts,
       },
     ],
   });
@@ -96,19 +101,21 @@ async function summarizeConversation(chatId) {
 
   if (!messages.length) return;
 
-  const lines = messages
-    .reverse()
-    .map((m) => {
-      const base =
-        m.summary ||
-        (m.content?.text
-          ? m.content.text.slice(0, 400)
-          : m.content?.imageUrl
-            ? "User shared an image (summarized)."
-            : "");
-      return `${m.role}: ${base}`;
-    })
-    .join("\n\n");
+  const lines = [];
+  await messages.reverse().map((m) => {
+    const base =
+      m.summary ||
+      (m.content?.text
+        ? m.content.text.slice(0, 400)
+        : m.content?.imageUrl
+          ? "User shared an image (no info/not summarized)."
+          : "");
+
+    lines.push({
+      type: "text",
+      text: `${m.role}: ${base}`,
+    });
+  });
 
   const completion = await openai.chat.completions.create({
     model: "gpt-5-mini", // better quality for conversation summary
