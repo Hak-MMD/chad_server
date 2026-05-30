@@ -12,6 +12,7 @@ const generateAccessToken = (user) => {
       email: user.email,
       plan: user.plan,
       role: user.role,
+      emailVerified: user.emailVerified || false,
     },
     process.env.ACCESS_SECRET,
     { expiresIn: ACCESS_TOKEN_EXPIRES }

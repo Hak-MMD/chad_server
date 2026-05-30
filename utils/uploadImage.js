@@ -1,11 +1,13 @@
 const cloudinary = require("../config/cloudinary");
 
+const MAX_BASE64_LENGTH = 7 * 1024 * 1024; // ~5 MB of actual image data encoded as base64
+
 function normalizeBase64(input) {
   let base64 = input.trim();
 
   // If already a valid data URI → return as-is
   if (base64.startsWith("data:image")) {
-    return base64.replace(/\s/g, ""); // remove whitespace
+    return base64.replace(/\s/g, "");
   }
 
   // Otherwise, assume raw base64 and wrap it
@@ -13,6 +15,10 @@ function normalizeBase64(input) {
 }
 
 async function uploadImageBase64(base64, options = {}) {
+  if (base64.length > MAX_BASE64_LENGTH) {
+    throw new Error("Image too large. Maximum size is approximately 5 MB.");
+  }
+
   console.log("Uploading image to Cloudinary...");
 
   const dataUri = normalizeBase64(base64);
@@ -22,8 +28,6 @@ async function uploadImageBase64(base64, options = {}) {
     resource_type: "image",
     overwrite: false,
   });
-
-  console.log("Image uploaded to Cloudinary: ", result);
 
   return {
     url: result.secure_url,

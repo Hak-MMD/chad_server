@@ -2,6 +2,7 @@
 const openai = require("../config/openai");
 const Message = require("../models/Message");
 const Chat = require("../models/Chat");
+const { MODELS } = require("../config/models");
 
 const MESSAGE_SUMMARY_THRESHOLD_CHARS = 400;
 const CONVERSATION_SUMMARY_INTERVAL = 15;
@@ -9,7 +10,6 @@ const MAX_MESSAGES_PER_CHAT = 200;
 
 const queue = [];
 
-// Simple in-process queue runner
 async function runQueue() {
   if (queue.running) return;
   queue.running = true;
@@ -54,9 +54,7 @@ async function summarizeMessage(messageId) {
     );
     parts.push({
       type: "image_url",
-      image_url: {
-        url: imageUrl,
-      },
+      image_url: { url: imageUrl },
     });
   }
 
@@ -68,7 +66,7 @@ async function summarizeMessage(messageId) {
   }
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-5-nano", // cheap summarization model
+    model: MODELS.SUMMARIZE_MESSAGE,
     messages: [
       {
         role: "system",
@@ -101,8 +99,7 @@ async function summarizeConversation(chatId) {
 
   if (!messages.length) return;
 
-  const lines = [];
-  await messages.reverse().map((m) => {
+  const lines = messages.reverse().map((m) => {
     const base =
       m.summary ||
       (m.content?.text
@@ -111,14 +108,11 @@ async function summarizeConversation(chatId) {
           ? "User shared an image (no info/not summarized)."
           : "");
 
-    lines.push({
-      type: "text",
-      text: `${m.role}: ${base}`,
-    });
+    return { type: "text", text: `${m.role}: ${base}` };
   });
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-5-mini", // better quality for conversation summary
+    model: MODELS.SUMMARIZE_CONVERSATION,
     messages: [
       {
         role: "system",

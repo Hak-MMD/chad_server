@@ -1,16 +1,11 @@
 const express = require("express");
 const router = express.Router();
 
-const {
-  createCheckoutSession,
-  createPortalSession,
-} = require("../controllers/billingController");
-const authMiddleware = require("../middlewares/authMiddleware");
+const { createCheckoutSession, createPortalSession } = require("../controllers/billingController");
+const protect = require("../middlewares/authMiddleware");
+const requireEmailVerified = require("../middlewares/requireEmailVerified");
 
-// Create Stripe Checkout Session
-router.post("/create-checkout-session", authMiddleware, createCheckoutSession);
-
-// Create Stripe Billing Portal Session
-router.post("/create-portal-session", authMiddleware, createPortalSession);
+router.post("/create-checkout-session", protect, requireEmailVerified, createCheckoutSession);
+router.post("/create-portal-session", protect, requireEmailVerified, createPortalSession);
 
 module.exports = router;

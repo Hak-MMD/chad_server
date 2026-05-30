@@ -14,6 +14,7 @@ const {
   hashToken,
   refreshExpiryDate,
 } = require("../utils/jwt.js");
+const AuditLog = require("../models/AuditLog.js");
 const sendEmail = require("../utils/sendEmail.js");
 const loadTemplate = require("../utils/loadTemplate.js");
 const validatePassword = require("../utils/validatePassword.js");
@@ -65,8 +66,10 @@ const register = async (req, res) => {
       monthlyResetAt: nextMonth(),
     });
 
-    // EMAIL VERIFICATION LOGIC (unchanged)
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    AuditLog.create({ userId: user._id, action: "register", source: "website" }).catch(console.error);
+
+    // EMAIL VERIFICATION LOGIC
+    const code = crypto.randomInt(100000, 1000000).toString();
     const codeHash = crypto.createHash("sha256").update(code).digest("hex");
 
     await EmailVerification.create({
@@ -92,7 +95,6 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await userModel.findOne({ email });
-    console.log("User found:", user);
     if (!user) return res.status(400).json({ error: "Invalid credentials" });
 
     if (user.authProvider === "google") {
@@ -113,8 +115,9 @@ const login = async (req, res) => {
       user.loginAttempts += 1;
 
       if (user.loginAttempts >= 10) {
-        user.lockUntil = new Date(Date.now() + 30 * 60 * 1000); // 30 min
+        user.lockUntil = new Date(Date.now() + 30 * 60 * 1000);
         user.loginAttempts = 0;
+        AuditLog.create({ userId: user._id, action: "login_locked", source: "website", metadata: { ip: req.ip } }).catch(console.error);
       }
 
       await user.save();
@@ -147,6 +150,8 @@ const login = async (req, res) => {
     user.lastLoginAt = new Date();
     await user.save();
 
+    AuditLog.create({ userId: user._id, action: "login", source: "website", metadata: { ip: req.ip } }).catch(console.error);
+
     res.json({
       accessToken,
       user: {
@@ -165,7 +170,6 @@ const login = async (req, res) => {
 const refreshToken = async (req, res) => {
   try {
     const incoming = req.body.refreshToken || req.cookies.refreshToken;
-    console.log(132);
     if (!incoming)
       return res.status(401).json({ error: "Missing refresh token" });
     const incomingHash = hashToken(incoming);
@@ -198,7 +202,7 @@ const refreshToken = async (req, res) => {
 
     const accessToken = generateAccessToken(user);
 
-    res.cookie("refreshToken", refreshToken, {
+    res.cookie("refreshToken", newRefreshToken, {
       httpOnly: true,
       secure: isProd,
       sameSite: isProd ? "none" : "lax",
@@ -217,14 +221,18 @@ const logout = async (req, res) => {
     if (incoming) {
       const hash = hashToken(incoming);
 
-      await authSessionModel.updateOne(
+      const session = await authSessionModel.findOneAndUpdate(
         { refreshTokenHash: hash },
         { revokedAt: new Date() },
+        { new: false },
       );
+
+      if (session?.userId) {
+        AuditLog.create({ userId: session.userId, action: "logout", source: "website" }).catch(console.error);
+      }
     }
 
     res.clearCookie("refreshToken");
-
     res.json({ message: "Logged out" });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -232,26 +240,26 @@ const logout = async (req, res) => {
 };
 
 const getCurrentUser = async (req, res) => {
-  const user = await userModel.findById(req.user.id);
-  // const stats = await UsageStats.findOne({ user: req.user.id });
-  // if (!stats) {
-  let stats = { dailyCount: 0, monthlyCount: 0 };
-  // }
-  res.json({
-    user,
-    usage: {
-      dailyUsed: stats?.dailyCount,
-      dailyLimit: PLANS[user.plan].dailyRequests,
-      monthlyUsed: stats.monthlyCount,
-      monthlyLimit: PLANS[user.plan].monthlyRequests,
-    },
-  });
-  // res.json({
-  //   id: user._id,
-  //   email: user.email,
-  //   plan: user.plan,
+  try {
+    const user = await userModel.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-  // });
+    const stats = await UsageStats.findOne({ userId: req.user.id });
+    const plan = PLANS[user.plan] || PLANS.free;
+
+    res.json({
+      user,
+      usage: {
+        dailyUsed: stats?.dailyCount ?? 0,
+        dailyLimit: plan.dailyRequests,
+        monthlyUsed: stats?.monthlyCount ?? 0,
+        monthlyLimit: plan.monthlyRequests,
+      },
+    });
+  } catch (err) {
+    console.error("getCurrentUser error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 };
 
 const verifyEmail = async (req, res) => {
@@ -278,6 +286,8 @@ const verifyEmail = async (req, res) => {
   user.emailVerified = true;
   await user.save();
   await record.deleteOne();
+
+  AuditLog.create({ userId: user._id, action: "email_verified", source: "website" }).catch(console.error);
 
   res.json({ message: "Email verified successfully" });
 };
@@ -308,7 +318,7 @@ const resendVerification = async (req, res) => {
     await EmailVerification.deleteMany({ userId: user._id });
 
     // Generate new code
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = crypto.randomInt(100000, 1000000).toString();
     const codeHash = crypto.createHash("sha256").update(code).digest("hex");
 
     await EmailVerification.create({
@@ -476,6 +486,8 @@ const googleAuthCallback = async (req, res) => {
           email,
           avatarUrl: picture,
         });
+
+        AuditLog.create({ userId: user._id, action: "google_signup", source: "website" }).catch(console.error);
       } else {
         // Email user exists → start linking flow
         if (user.authProvider === "email") {
@@ -528,6 +540,8 @@ const googleAuthCallback = async (req, res) => {
     // 7 Update login timestamp
     user.lastLoginAt = new Date();
     await user.save();
+
+    AuditLog.create({ userId: user._id, action: "google_login", source: "website", metadata: { ip: req.ip } }).catch(console.error);
 
     // 8 Generate tokens
     const accessToken = generateAccessToken(user);

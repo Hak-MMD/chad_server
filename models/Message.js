@@ -35,10 +35,14 @@ const MessageSchema = new mongoose.Schema(
     promptTokens: { type: Number },
     completionTokens: { type: Number },
     totalTokens: { type: Number },
+
+    // Idempotency: clients may send a unique key to prevent duplicate messages on retry
+    idempotencyKey: {
+      type: String,
+      index: true,
+    },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
-const messageModel = mongoose.model("messages", MessageSchema);
-
-module.exports = messageModel;
+module.exports = mongoose.model("messages", MessageSchema);

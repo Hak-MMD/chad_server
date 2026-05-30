@@ -15,8 +15,6 @@ const upgradeUser = async (req, res) => {
       return res.status(400).json({ error: "Invalid plan" });
     }
 
-    console.log("Upgrading user:", req.params.id, "to plan:", plan);
-
     const result = await upgradeUserPlan({
       userId: req.params.id,
       plan,

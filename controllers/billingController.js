@@ -2,10 +2,7 @@ const stripe = require("../config/stripe");
 const User = require("../models/User");
 const { PLANS } = require("../config/plans");
 
-const FRONTEND_URL =
-  process.env.NODE_ENV === "production"
-    ? "https://chad-ai-nd2k.onrender.com"
-    : "http://localhost:3000";
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 async function getOrCreateStripeCustomer(user) {
   if (user.stripeCustomerId) return user.stripeCustomerId;

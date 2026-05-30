@@ -15,14 +15,53 @@ const {
 const { selectModelForRequest } = require("../utils/modelSelector.js");
 
 const message = async (req, res) => {
-  console.log("Entered message controller");
   try {
-    const { text, screenshot, chatId, model: requestedModel } = req.body;
+    const { text, screenshot, chatId, model: requestedModel, idempotencyKey } = req.body;
     const userId = req.user.id;
     const plan = req.plan;
     const usageStats = req.usageStats;
 
-    // 1) Upload image (if provided)
+    // Idempotency: if client retried an already-processed request, return cached response
+    if (idempotencyKey) {
+      const existingUserMsg = await Message.findOne({ idempotencyKey, userId });
+      if (existingUserMsg) {
+        const existingAiMsg = await Message.findOne({
+          chatId: existingUserMsg.chatId,
+          role: "assistant",
+          createdAt: { $gt: existingUserMsg.createdAt },
+        }).sort({ createdAt: 1 });
+
+        // Release the usage slot reserved by middleware
+        await UsageStats.updateOne(
+          { userId },
+          { $inc: { dailyCount: -1, monthlyCount: -1 } },
+        );
+
+        if (existingAiMsg) {
+          return res.status(200).json({
+            reply: existingAiMsg.content.text,
+            modelUsed: existingAiMsg.model,
+            modelDowngraded: false,
+            cached: true,
+          });
+        }
+        // First request is still in-flight
+        return res.status(409).json({
+          errorMessage: "Request already in progress. Please retry shortly.",
+        });
+      }
+    }
+
+    // 1) Validate chat ownership before writing anything
+    const chat = await Chat.findById(chatId);
+    if (!chat) {
+      return res.status(404).json({ errorMessage: "Chat not found" });
+    }
+    if (chat.userId.toString() !== userId) {
+      return res.status(403).json({ errorMessage: "Access denied" });
+    }
+
+    // 2) Upload image (if provided)
     let imageData = null;
     if (screenshot) {
       imageData = await uploadImageBase64(screenshot, {
@@ -30,7 +69,7 @@ const message = async (req, res) => {
       });
     }
 
-    // 2) Save USER message
+    // 3) Save USER message
     const userMessage = await Message.create({
       chatId,
       userId,
@@ -46,28 +85,20 @@ const message = async (req, res) => {
             }
           : undefined,
       },
+      ...(idempotencyKey ? { idempotencyKey } : {}),
     });
 
-    // 3) Update chat counters
-    const chat = await Chat.findById(chatId);
-    if (!chat) {
-      return res.status(404).json({ errorMessage: "Chat not found" });
-    }
-    chat.messageCount = (chat.messageCount || 0) + 1;
-    await chat.save();
+    // 4) Update chat counters atomically
+    const updatedChat = await Chat.findOneAndUpdate(
+      { _id: chatId },
+      { $inc: { messageCount: 1 } },
+      { new: true },
+    );
 
-    // 4) Build context (history text-only, current text-only)
-    const { messages: contextMessages } = await buildContext({
-      chatId,
-      // currentUserMessage: {
-      //   text,
-      //   imageUrl: imageData?.url,
-      // },
-    });
+    // 5) Build context
+    const { messages: contextMessages } = await buildContext({ chatId });
 
-    // console.log("context messages: ", contextMessages);
-
-    // 5) Select model
+    // 6) Select model
     const {
       model: modelToUse,
       downgraded,
@@ -85,7 +116,7 @@ const message = async (req, res) => {
       });
     }
 
-    // 6) Build OpenAI messages (hybrid vision: only current user message gets image)
+    // 7) Build OpenAI messages (hybrid vision: only current user message gets image)
     const openAIMessages = contextMessages.map((m, idx) => {
       const isLast = idx === contextMessages.length - 1;
       const isLastUser = isLast && m.role === "user";
@@ -115,10 +146,6 @@ const message = async (req, res) => {
         content: parts,
       };
     });
-
-    // console.log("final messages obj: ", openAIMessages);
-    console.log("final messages obj: ");
-    console.dir(openAIMessages, { depth: null });
 
     // 7) Call OpenAI
     const completion = await openai.chat.completions.create({
@@ -162,13 +189,11 @@ const message = async (req, res) => {
       source: "extension",
     });
 
-    // 11) Increment usage counters
+    // 11) Track model token usage (dailyCount/monthlyCount already reserved in middleware)
     await UsageStats.updateOne(
       { userId },
       {
         $inc: {
-          dailyCount: 1,
-          monthlyCount: 1,
           [`modelTokenMonthly.${completion.model}`]: usage.totalTokens,
         },
       },
@@ -179,8 +204,8 @@ const message = async (req, res) => {
     enqueueMessageSummary(assistantMessage._id);
 
     if (
-      chat.messageCount % CONVERSATION_SUMMARY_INTERVAL === 0 &&
-      chat.messageCount > 0
+      updatedChat.messageCount % CONVERSATION_SUMMARY_INTERVAL === 0 &&
+      updatedChat.messageCount > 0
     ) {
       enqueueConversationSummary(chatId);
     }
@@ -191,18 +216,18 @@ const message = async (req, res) => {
       modelUsed: completion.model,
       modelDowngraded: downgraded || false,
       remaining: {
-        daily: Math.max(
-          plan.dailyRequests - (req.usageStats.dailyCount + 1),
-          0,
-        ),
-        monthly: Math.max(
-          plan.monthlyRequests - (req.usageStats.monthlyCount + 1),
-          0,
-        ),
+        daily: Math.max(plan.dailyRequests - req.usageStats.dailyCount, 0),
+        monthly: Math.max(plan.monthlyRequests - req.usageStats.monthlyCount, 0),
       },
     });
   } catch (err) {
     console.error("AI error:", err);
+    if (err?.status === 429) {
+      return res.status(503).json({ errorMessage: "AI service is busy. Please try again." });
+    }
+    if (err?.status === 400) {
+      return res.status(400).json({ errorMessage: "Invalid request to AI service." });
+    }
     return res.status(500).json({
       errorMessage: "Something went wrong. Try again later.",
     });
@@ -210,111 +235,3 @@ const message = async (req, res) => {
 };
 
 module.exports = { message };
-
-// For testing test edpoints:
-
-//success
-const messageNorm = async (req, res) => {
-  const { text, screenshot } = req.body;
-  try {
-    console.log("Received text:", text);
-    await new Promise((resolve) => setTimeout(resolve, 3000)); // Simulate processing delay
-    // console.log("Received screenshots:", screenshot);
-    //  // ---- Token & cost calculation ----
-    // const usage = calculateUsage({
-    //   model: completion.model,
-    //   promptTokens: completion.usage?.prompt_tokens || 0,
-    //   completionTokens: completion.usage?.completion_tokens || 0,
-    // });
-
-    // // ---- 1️⃣ Save audit log ----
-    // await Usage.create({
-    //   user: req.user._id,
-    //   chat: chatId || null,
-    //   type: "chat",
-    //   model: completion.model,
-    //   ...usage,
-    //   source: "extension",
-    // });
-
-    // // ---- 2️⃣ Increment usage counters ----
-    // await UsageStats.updateOne(
-    //   { user: req.user._id },
-    //   {
-    //     $inc: {
-    //       dailyCount: 1,
-    //       monthlyCount: 1,
-    //     },
-    //   }
-    // );
-
-    // const limits = PLANS[req.user.plan || "free"];
-
-    // // ---- 3️⃣ Respond to client ----
-    // res.status(200).json({
-    //   reply: aiMessage,
-    //   remaining: {
-    //     daily: Math.max(
-    //       limits.dailyRequests - (req.usageStats.dailyCount + 1),
-    //       0
-    //     ),
-    //     monthly: Math.max(
-    //       limits.monthlyRequests - (req.usageStats.monthlyCount + 1),
-    //       0
-    //     ),
-    //   },
-    // });
-    res.json({
-      reply: `Hello from the API controller! ${
-        screenshot ? "Screenshot received." : "No screenshot."
-      }`,
-    });
-  } catch (error) {
-    console.log("Error in message controller:", error);
-  }
-};
-
-// 400/500 status test
-const messageErr = async (req, res) => {
-  const { text, screenshot } = req.body;
-  try {
-    console.log("Received text:", text);
-    if (text) {
-      console.log("error here: ", text);
-      return res.status(400).json({ errorMessage: `400 1  error textissent` });
-    } else if (screenshot) {
-      return res
-        .status(500)
-        .json({ errorMessage: `500 2 error screenshot sent` });
-    }
-    await new Promise((resolve) => setTimeout(resolve, 3000)); // Simulate processing delay
-    // console.log("Received screenshots:", screenshot);
-    // Save event-level usage
-    await Usage.create({
-      user: req.user._id,
-      chat: chatId,
-      type: "chat",
-      model,
-      promptTokens,
-      completionTokens,
-      totalTokens,
-      costUSD,
-      source: "extension",
-    });
-
-    // Update counters
-    req.usageStats.dailyCount += 1;
-    req.usageStats.monthlyCount += 1;
-
-    await req.usageStats.save();
-    res.json({
-      reply: `Hello from the API controller! ${
-        screenshot ? "Screenshot received." : "No screenshot."
-      }`,
-    });
-  } catch (error) {
-    console.log("Error in message controller:", error);
-  }
-};
-
-module.exports = { messageNorm, messageErr, message };

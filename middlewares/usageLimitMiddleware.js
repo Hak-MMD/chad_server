@@ -14,28 +14,7 @@ function usageLimit(options = {}) {
       const planKey = user.plan || "free";
       const plan = PLANS[planKey];
       if (!plan) {
-        return res.status(500).json({ error: "Invalid plan configuration" });
-      }
-
-      const stats = await UsageStats.findOne({ userId: user.id });
-      if (!stats) {
-        return res.status(500).json({ error: "Usage stats not found" });
-      }
-
-      await resetUsageStats(stats);
-
-      if (stats.dailyCount >= plan.dailyRequests) {
-        return res.status(429).json({
-          error: "Daily limit reached",
-          upgradeRequired: true,
-        });
-      }
-
-      if (stats.monthlyCount >= plan.monthlyRequests) {
-        return res.status(429).json({
-          error: "Monthly limit reached",
-          upgradeRequired: true,
-        });
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
       if (options?.requiresImage && !plan.allowImages) {
@@ -45,7 +24,39 @@ function usageLimit(options = {}) {
         });
       }
 
-      req.usageStats = stats;
+      // Reset stale daily/monthly counters before checking limits
+      const stats = await UsageStats.findOne({ userId: user.id });
+      if (!stats) {
+        return res.status(500).json({ error: "Usage stats not found" });
+      }
+      await resetUsageStats(stats);
+
+      // Atomic check + reserve a slot — prevents concurrent requests bypassing limits
+      const updated = await UsageStats.findOneAndUpdate(
+        {
+          userId: user.id,
+          dailyCount: { $lt: plan.dailyRequests },
+          monthlyCount: { $lt: plan.monthlyRequests },
+        },
+        { $inc: { dailyCount: 1, monthlyCount: 1 } },
+        { new: true },
+      );
+
+      if (!updated) {
+        const current = await UsageStats.findOne({ userId: user.id });
+        if (current.dailyCount >= plan.dailyRequests) {
+          return res.status(429).json({
+            error: "Daily limit reached",
+            upgradeRequired: true,
+          });
+        }
+        return res.status(429).json({
+          error: "Monthly limit reached",
+          upgradeRequired: true,
+        });
+      }
+
+      req.usageStats = updated;
       req.plan = plan;
       next();
     } catch (err) {

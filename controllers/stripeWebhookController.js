@@ -72,6 +72,11 @@ const handleStripeWebhook = async (req, res) => {
 
   let event;
 
+  if (!webhookSecret) {
+    console.error("Stripe webhook secret not configured for mode:", isLive ? "live" : "test");
+    return res.status(500).send("Webhook configuration error");
+  }
+
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err) {
