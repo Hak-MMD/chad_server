@@ -24,8 +24,10 @@ const isProd = process.env.NODE_ENV === "production";
 
 app.set("trust proxy", 1);
 
-// HTTP request logging
-app.use(morgan(isProd ? "combined" : "dev"));
+// HTTP request logging (suppressed in test environment)
+if (process.env.NODE_ENV !== "test") {
+  app.use(morgan(isProd ? "combined" : "dev"));
+}
 
 // CORS
 const defaultOrigins = [
@@ -102,4 +104,6 @@ const start = async () => {
   }
 };
 
-start();
+if (require.main === module) start();
+
+module.exports = app;

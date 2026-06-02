@@ -19,8 +19,6 @@ async function uploadImageBase64(base64, options = {}) {
     throw new Error("Image too large. Maximum size is approximately 5 MB.");
   }
 
-  console.log("Uploading image to Cloudinary...");
-
   const dataUri = normalizeBase64(base64);
 
   const result = await cloudinary.uploader.upload(dataUri, {

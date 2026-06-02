@@ -169,7 +169,7 @@ const login = async (req, res) => {
 
 const refreshToken = async (req, res) => {
   try {
-    const incoming = req.body.refreshToken || req.cookies.refreshToken;
+    const incoming = req.body?.refreshToken || req.cookies.refreshToken;
     if (!incoming)
       return res.status(401).json({ error: "Missing refresh token" });
     const incomingHash = hashToken(incoming);
@@ -217,7 +217,7 @@ const refreshToken = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    const incoming = req.cookies.refreshToken || req.body.refreshToken;
+    const incoming = req.cookies.refreshToken || req.body?.refreshToken;
     if (incoming) {
       const hash = hashToken(incoming);
 

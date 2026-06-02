@@ -1,8 +1,11 @@
 const stripe = require("../config/stripe");
 const StripeEvent = require("../models/StripeEvent");
-const Subscription = require("../models/Subscription");
 const User = require("../models/User");
 const { PLANS } = require("../config/plans");
+const {
+  applyActiveSubscription,
+  applyCanceledSubscription,
+} = require("../services/subscriptionService");
 
 const isLive = process.env.STRIPE_MODE === "live";
 const webhookSecret = isLive
